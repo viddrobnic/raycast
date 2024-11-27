@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define WIDTH 800
 #define HEIGHT 450
@@ -11,26 +12,131 @@
 #define FLOOR_COLOR 0xff666666
 #define CEIL_COLOR 0xff444444
 
-#define CAMERA_WIDTH 0.7f
-
-#define MAP_WIDTH 8
-#define MAP_HEIGHT 8
+#define CAMERA_WIDTH 1.0f
 
 #define DARK_MASK 0xff7f7f7f
 
-#define SPEED 1.5f
-#define ROT_SPEED 1.5f
+#define SPEED 1.8f
+#define ROT_SPEED 1.8f
+
+#define CONN_UP 0b0001
+#define CONN_DOWN 0b0010
+#define CONN_LEFT 0b0100
+#define CONN_RIGHT 0b1000
+
+#define MAZE_WIDTH 10
+#define MAZE_HEIGHT 10
 
 typedef struct {
   float x, y;
 } Vec;
 
-uint8_t mapData[MAP_HEIGHT][MAP_WIDTH] = {
-    {1, 1, 1, 1, 1, 1, 1, 1}, {1, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 2, 0, 0, 1}, {1, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0, 0, 1},
-    {1, 0, 0, 0, 0, 0, 0, 1}, {1, 1, 1, 1, 1, 1, 1, 1},
-};
+void shuffle(uint8_t *data, int size) {
+  for (int n = size - 1; n > 0; n--) {
+    int index = rand() % n;
+    uint8_t temp = data[index];
+    data[index] = data[n];
+    data[n] = temp;
+  }
+}
+
+void generateMaze(uint8_t *map, uint8_t *visited, int x, int y, int width,
+                  int height) {
+  uint8_t indices[4] = {0, 1, 2, 3};
+  shuffle(indices, 4);
+
+  int idx = y * width + x;
+
+  int dir, dir2;
+  for (int i = 0; i < 4; i++) {
+    int dx, dy;
+    if (indices[i] == 0) {
+      dx = -1;
+      dy = 0;
+      dir = CONN_LEFT;
+      dir2 = CONN_RIGHT;
+    } else if (indices[i] == 1) {
+      dx = 1;
+      dy = 0;
+      dir = CONN_RIGHT;
+      dir2 = CONN_LEFT;
+    } else if (indices[i] == 2) {
+      dx = 0;
+      dy = -1;
+      dir = CONN_UP;
+      dir2 = CONN_DOWN;
+    } else if (indices[i] == 3) {
+      dx = 0;
+      dy = 1;
+      dir = CONN_DOWN;
+      dir2 = CONN_UP;
+    } else {
+      dx = 0;
+      dy = 0;
+      dir = 0;
+      dir2 = 0;
+    }
+
+    int x2 = x + dx;
+    int y2 = y + dy;
+
+    if (x2 < 0 || x2 >= width || y2 < 0 || y2 >= height) {
+      continue;
+    }
+
+    int idx2 = y2 * width + x2;
+
+    if (visited[idx2]) {
+      continue;
+    }
+    visited[idx2] = 1;
+
+    map[idx] |= dir;
+    map[idx2] |= dir2;
+
+    generateMaze(map, visited, x2, y2, width, height);
+  }
+}
+
+void convertMazeToMapData(uint8_t *maze, uint8_t *map, int width, int height) {
+  int mapW = 2 * width + 1;
+
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      if ((maze[y * width + x] & CONN_DOWN) == 0) {
+        map[(y * 2 + 2) * mapW + (x * 2 + 1)] = 1;
+      }
+      if ((maze[y * width + x] & CONN_RIGHT) == 0) {
+        map[(y * 2 + 1) * mapW + (x * 2 + 2)] = 1;
+      }
+
+      map[(y * 2 + 2) * mapW + (x * 2 + 2)] = 1;
+    }
+  }
+
+  for (int x = 0; x < 2 * width + 1; x++) {
+    map[x] = 1;
+    map[2 * height * mapW + x] = 1;
+  }
+
+  for (int y = 0; y < 2 * height + 1; y++) {
+    map[y * mapW] = 1;
+    map[y * mapW + 2 * width] = 1;
+  }
+}
+
+void printMap(uint8_t *map, int width, int height) {
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      if (map[y * width + x]) {
+        printf("#");
+      } else {
+        printf(".");
+      }
+    }
+    printf("\n");
+  }
+}
 
 void drawColumn(uint32_t *pixels, int column, int height, uint32_t color) {
   int startY = HEIGHT / 2 - height / 2;
@@ -95,7 +201,7 @@ float length(Vec pos, Vec dir, Vec point) {
   return num / denum;
 }
 
-void render(uint32_t *pixels, Vec pos, float rot) {
+void render(uint32_t *pixels, Vec pos, float rot, uint8_t *mapData, int mapW) {
   Vec cameraDir = {.x = cosf(rot), .y = sinf(rot)};
   Vec cameraPlane = {.x = -cameraDir.y, .y = cameraDir.x};
 
@@ -153,7 +259,7 @@ void render(uint32_t *pixels, Vec pos, float rot) {
       xRem += ray.x * dt - dxIdx;
       yRem += ray.y * dt - dyIdx;
 
-      if (mapData[yIdx][xIdx] > 0) {
+      if (mapData[yIdx * mapW + xIdx] > 0) {
         break;
       }
     }
@@ -171,10 +277,8 @@ void render(uint32_t *pixels, Vec pos, float rot) {
     }
 
     uint32_t color = 0;
-    if (mapData[yIdx][xIdx] == 1) {
+    if (mapData[yIdx * mapW + xIdx] == 1) {
       color = 0xff0000ff;
-    } else if (mapData[yIdx][xIdx] > 0) {
-      color = 0xff00ff00;
     }
 
     if (hit == 2) {
@@ -185,7 +289,7 @@ void render(uint32_t *pixels, Vec pos, float rot) {
   }
 }
 
-void handleEvents(Vec *pos, float *rot) {
+void handleEvents(Vec *pos, float *rot, uint8_t *mapData, int mapW) {
   float t = GetFrameTime();
 
   if (IsKeyDown(KEY_A)) {
@@ -198,21 +302,57 @@ void handleEvents(Vec *pos, float *rot) {
       .x = cosf(*rot) * SPEED * t,
       .y = sinf(*rot) * SPEED * t,
   };
+  Vec newPos = *pos;
   if (IsKeyDown(KEY_W)) {
-    pos->x += dir.x;
-    pos->y += dir.y;
+    newPos.x = pos->x + dir.x;
+    newPos.y = pos->y + dir.y;
   } else if (IsKeyDown(KEY_S)) {
-    pos->x -= dir.x;
-    pos->y -= dir.y;
+    newPos.x = pos->x - dir.x;
+    newPos.y = pos->y - dir.y;
+  }
+
+  // check if x can be changed
+  int idx = ((int)pos->y) * mapW + ((int)newPos.x);
+  if (!mapData[idx]) {
+    pos->x = newPos.x;
+  }
+
+  // check if y can be changed
+  idx = ((int)newPos.y) * mapW + ((int)pos->x);
+  if (!mapData[idx]) {
+    pos->y = newPos.y;
   }
 }
 
+void generateMapData(uint8_t *mapData) {
+  srand(time(NULL));
+
+  uint8_t maze[MAZE_WIDTH * MAZE_HEIGHT];
+  memset(maze, 0, MAZE_WIDTH * MAZE_HEIGHT);
+
+  uint8_t visited[MAZE_WIDTH * MAZE_HEIGHT];
+  memset(visited, 0, MAZE_WIDTH * MAZE_HEIGHT);
+  visited[0] = 1;
+  generateMaze(maze, visited, 0, 0, MAZE_WIDTH, MAZE_HEIGHT);
+
+  const int mapW = 2 * MAZE_WIDTH + 1;
+  const int mapH = 2 * MAZE_HEIGHT + 1;
+  memset(mapData, 0, mapW * mapH);
+  convertMazeToMapData(maze, mapData, MAZE_WIDTH, MAZE_HEIGHT);
+  printMap(mapData, mapW, mapH);
+}
+
 int main(void) {
-  InitWindow(WIDTH, HEIGHT, "raycast");
+  const int mapW = 2 * MAZE_WIDTH + 1;
+  const int mapH = 2 * MAZE_HEIGHT + 1;
+  uint8_t mapData[mapW * mapH];
+  generateMapData(mapData);
+
+  InitWindow(WIDTH, HEIGHT, "Maze Runner");
 
   SetTargetFPS(60);
 
-  Vec pos = {5.5, 5.5};
+  Vec pos = {1.0, 1.0};
   float rot = 0;
 
   uint32_t pixels[WIDTH * HEIGHT];
@@ -224,8 +364,8 @@ int main(void) {
   Texture2D texture = LoadTextureFromImage(image);
 
   while (!WindowShouldClose()) {
-    handleEvents(&pos, &rot);
-    render(pixels, pos, rot);
+    handleEvents(&pos, &rot, mapData, mapW);
+    render(pixels, pos, rot, mapData, mapW);
 
     UpdateTexture(texture, pixels);
 
