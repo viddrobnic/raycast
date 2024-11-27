@@ -201,6 +201,72 @@ float length(Vec pos, Vec dir, Vec point) {
   return num / denum;
 }
 
+void renderSprite(uint32_t *pixels, Vec pos, float rot, Vec spritePos) {
+  int height = 50;
+  int width = 50;
+  float sY = 0.5; // ceiling offset [0, 1]
+
+  Vec cameraDir = {.x = cosf(rot), .y = sinf(rot)};
+  Vec cameraPlane = {.x = -cameraDir.y, .y = cameraDir.x};
+
+  Vec s = {
+      .x = spritePos.x - pos.x,
+      .y = spritePos.y - pos.y,
+  };
+
+  float scalar = cameraDir.x * s.x + cameraDir.y * s.y;
+  if (scalar <= 0) {
+    return;
+  }
+
+  float den = s.x * cameraPlane.y - s.y * cameraPlane.x;
+  if (den == 0) {
+    return;
+  }
+
+  float num = s.y * cameraDir.x - s.x * cameraDir.y;
+
+  float cameraX = num / den;
+  if (cameraX < -CAMERA_WIDTH || cameraX > CAMERA_WIDTH) {
+    return;
+  }
+
+  int w = floorf((cameraX + CAMERA_WIDTH) / 2.0 / CAMERA_WIDTH * WIDTH);
+
+  float len = length(pos, cameraPlane, spritePos);
+  int h = HEIGHT / len;
+  if (h > HEIGHT) {
+    h = HEIGHT;
+  }
+
+  int rW = width / len;
+  int rH = height / len;
+
+  int startW = w - rW / 2;
+  if (startW < 0) {
+    startW = 0;
+  }
+  int endW = startW + rW;
+  if (endW >= WIDTH) {
+    endW = WIDTH - 1;
+  }
+
+  int startY = HEIGHT / 2 - h / 2 + (int)(h * sY);
+  if (startY < 0) {
+    startY = 0;
+  }
+  int endY = startY + rH;
+  if (endY >= HEIGHT) {
+    endY = HEIGHT - 1;
+  }
+
+  for (int px = startW; px < endW; px++) {
+    for (int py = startY; py < endY; py++) {
+      pixels[py * WIDTH + px] = 0xff00ff00;
+    }
+  }
+}
+
 void render(uint32_t *pixels, Vec pos, float rot, uint8_t *mapData, int mapW) {
   Vec cameraDir = {.x = cosf(rot), .y = sinf(rot)};
   Vec cameraPlane = {.x = -cameraDir.y, .y = cameraDir.x};
@@ -366,6 +432,7 @@ int main(void) {
   while (!WindowShouldClose()) {
     handleEvents(&pos, &rot, mapData, mapW);
     render(pixels, pos, rot, mapData, mapW);
+    renderSprite(pixels, pos, rot, (Vec){1.5, 1.5});
 
     UpdateTexture(texture, pixels);
 
