@@ -142,15 +142,8 @@ void drawColumn(uint32_t *pixels, int column, int height, uint32_t color) {
   int startY = HEIGHT / 2 - height / 2;
   int endY = startY + height;
 
-  for (int y = 0; y < HEIGHT; y++) {
-    uint32_t c = color;
-    if (y < startY) {
-      c = CEIL_COLOR;
-    } else if (y > endY) {
-      c = FLOOR_COLOR;
-    }
-
-    pixels[y * WIDTH + column] = c;
+  for (int y = startY; y < endY; y++) {
+    pixels[y * WIDTH + column] = color;
   }
 }
 
@@ -263,6 +256,53 @@ void renderSprite(uint32_t *pixels, Vec pos, float rot, Vec spritePos) {
   for (int px = startW; px < endW; px++) {
     for (int py = startY; py < endY; py++) {
       pixels[py * WIDTH + px] = 0xff00ff00;
+    }
+  }
+}
+
+void drawFloor(uint32_t *pixels, Vec pos, float rot) {
+  Vec cameraDir = {.x = cosf(rot), .y = sinf(rot)};
+  Vec cameraPlane = {.x = -cameraDir.y, .y = cameraDir.x};
+
+  for (int y = 0; y < HEIGHT / 2; y++) {
+    float cameraFactor = 1.0 - 2.0 * y / HEIGHT;
+    float t = 1.0 / cameraFactor;
+
+    Vec left = {
+        .x = pos.x + t * (cameraDir.x - CAMERA_WIDTH * cameraPlane.x),
+        .y = pos.y + t * (cameraDir.y - CAMERA_WIDTH * cameraPlane.y),
+    };
+    Vec right = {
+        .x = pos.x + t * (cameraDir.x + CAMERA_WIDTH * cameraPlane.x),
+        .y = pos.y + t * (cameraDir.y + CAMERA_WIDTH * cameraPlane.y),
+    };
+
+    Vec diff = {
+        .x = right.x - left.x,
+        .y = right.y - left.y,
+    };
+
+    for (int x = 0; x < WIDTH; x++) {
+      float step = (float)x / WIDTH;
+      Vec pos = {
+          .x = left.x + step * diff.x,
+          .y = left.y + step * diff.y,
+      };
+
+      uint32_t floorC = FLOOR_COLOR;
+      uint32_t ceilC = CEIL_COLOR;
+      int xI = pos.x;
+      int yI = pos.y;
+      if ((xI + yI) % 2 == 0) {
+        floorC = CEIL_COLOR;
+        ceilC = FLOOR_COLOR;
+      }
+
+      // Draw ceil
+      pixels[y * WIDTH + x] = floorC;
+
+      // Draw floor
+      pixels[(HEIGHT - y - 1) * WIDTH + x] = floorC;
     }
   }
 }
@@ -440,6 +480,7 @@ int main(void) {
 
   while (!WindowShouldClose()) {
     handleEvents(&pos, &rot, mapData, mapW);
+    drawFloor(pixels, pos, rot);
     render(pixels, pos, rot, mapData, mapW);
     renderSprite(pixels, pos, rot, (Vec){1.5, 1.5});
 
