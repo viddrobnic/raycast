@@ -342,9 +342,18 @@ void render(uint32_t *pixels, Vec pos, float rot, uint8_t *mapData, int mapW) {
       h = HEIGHT;
     }
 
-    uint32_t color = 0;
-    if (mapData[yIdx * mapW + xIdx] == 1) {
-      color = 0xff0000ff;
+    float tCoord = 0;
+    if (hit == 1) {
+      tCoord = yRem;
+    } else if (hit == 2) {
+      tCoord = xRem;
+    }
+
+    uint8_t stripe = ((int)(tCoord * 10)) % 2;
+
+    uint32_t color = 0xff0000ff;
+    if (stripe) {
+      color = 0xff00ffff;
     }
 
     if (hit == 2) {
