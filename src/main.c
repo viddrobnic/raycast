@@ -6,8 +6,9 @@
 #include <string.h>
 #include <time.h>
 
-#define WIDTH 800
-#define HEIGHT 450
+#define WIDTH 1280
+#define HEIGHT 720
+#define SCALE 2
 
 #define FLOOR_COLOR 0xff666666
 #define CEIL_COLOR 0xff444444
@@ -264,7 +265,7 @@ void drawFloor(uint32_t *pixels, Vec pos, float rot) {
   Vec cameraDir = {.x = cosf(rot), .y = sinf(rot)};
   Vec cameraPlane = {.x = -cameraDir.y, .y = cameraDir.x};
 
-  for (int y = 0; y < HEIGHT / 2; y++) {
+  for (int y = 0; y < HEIGHT / 2; y += SCALE) {
     float cameraFactor = 1.0 - 2.0 * y / HEIGHT;
     float t = 1.0 / cameraFactor;
 
@@ -282,7 +283,7 @@ void drawFloor(uint32_t *pixels, Vec pos, float rot) {
         .y = right.y - left.y,
     };
 
-    for (int x = 0; x < WIDTH; x++) {
+    for (int x = 0; x < WIDTH; x += SCALE) {
       float step = (float)x / WIDTH;
       Vec pos = {
           .x = left.x + step * diff.x,
@@ -299,10 +300,14 @@ void drawFloor(uint32_t *pixels, Vec pos, float rot) {
       }
 
       // Draw ceil
-      pixels[y * WIDTH + x] = floorC;
+      for (int i = 0; i < SCALE; i++) {
+        for (int j = 0; j < SCALE; j++) {
+          pixels[(y + i) * WIDTH + x + j] = floorC;
 
-      // Draw floor
-      pixels[(HEIGHT - y - 1) * WIDTH + x] = floorC;
+          // Draw floor
+          pixels[(HEIGHT - (y + i) - 1) * WIDTH + x + j] = floorC;
+        }
+      }
     }
   }
 }
@@ -316,7 +321,7 @@ void render(uint32_t *pixels, Vec pos, float rot, uint8_t *mapData, int mapW) {
   float xRemPlayer = pos.x - floorf(pos.x);
   float yRemPlayer = pos.y - floorf(pos.y);
 
-  for (int x = 0; x < WIDTH; x++) {
+  for (int x = 0; x < WIDTH; x += SCALE) {
     float cameraFactor = CAMERA_WIDTH * (2.0 * x / WIDTH - 1.0);
     Vec cameraPoint = {
         .x = cameraPlane.x * cameraFactor,
@@ -400,7 +405,9 @@ void render(uint32_t *pixels, Vec pos, float rot, uint8_t *mapData, int mapW) {
       color = color & DARK_MASK;
     }
 
-    drawColumn(pixels, x, h, color);
+    for (int i = 0; i < SCALE; i++) {
+      drawColumn(pixels, x + i, h, color);
+    }
   }
 }
 
@@ -465,7 +472,7 @@ int main(void) {
 
   InitWindow(WIDTH, HEIGHT, "Maze Runner");
 
-  SetTargetFPS(60);
+  /* SetTargetFPS(60); */
 
   Vec pos = {1.0, 1.0};
   float rot = 0;
@@ -478,7 +485,12 @@ int main(void) {
                  .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
   Texture2D texture = LoadTextureFromImage(image);
 
+  int i = 0;
   while (!WindowShouldClose()) {
+    if (i % 1000 == 0) {
+      printf("fps: %d\n", GetFPS());
+      i = 0;
+    }
     handleEvents(&pos, &rot, mapData, mapW);
     drawFloor(pixels, pos, rot);
     render(pixels, pos, rot, mapData, mapW);
